@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+
+    <head>
+        <title>Verify</title>
+
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+        <meta name="description" content="">
+        <meta name="author" content="">
+
+        <link rel="icon" href="img/favico.png">
+        <link href="css/bootstrap.min.css" rel="stylesheet">
+        <link href="css/fontawesome-all.min.css" rel="stylesheet">
+
+        <script src="js/wavesurfer.js"></script>
+        <script src="js/wavesurfer.regions.js"></script>
+    </head>
+    <body>
+        <div class="container-fluid">
+            <div class="row-fluid">
+                <div id="waveform"></div>
+            </div>
+            <div class="row-fluid mt-3">
+                <textarea id="text" class="form-control" rows="3">{{ fragment.text }}</textarea>
+            </div>
+            <div class="control-group mt-3">
+                <div class="controls row-fluid">
+                    <button type="button" class="btn btn-success" title="Play" data-action="play">
+                        <i class="fas fa-play"></i>
+                    </button>
+                    <button type="button" class="btn btn-primary" title="Pause" data-action="pause">
+                        <i class="fas fa-pause"></i>
+                    </button>
+                    <button type="button" class="btn btn-danger" title="Stop" data-action="stop">
+                        <i class="fas fa-stop"></i>
+                    </button>
+                    <button type="button" class="btn btn-secondary ml-3" title="Zoom" data-action="zoom">
+                        <i class="fas fa-search"></i>
+                    </button>
+                    <input id="zoom" type="number" value="200">
+                </div>
+            </div>
+            <div class="control-group mt-5">
+                <div class="controls row-fluid">
+                    <form method="POST">
+                        <input type="hidden" name="mediaId" value="{{ fragment.id }}">
+                        <input type="hidden" name="language" value="{{ language }}">
+                        <input type="hidden" id="verifyBegin" name="begin" value="{{ fragment.begin }}">
+                        <input type="hidden" id="verifyEnd" name="end" value="{{ fragment.end }}">
+                        <input type="hidden" id="verifyText" name="text" value="{{ fragment.text }}">
+
+                        <button type="submit" class="btn btn-lg btn-success" data-action="verify">
+                            <i class="fas fa-check mr-1"></i>
+                            Verify
+                        </button>
+                    </form>
+                </div>
+            </div>
+            <div class="control-group mt-5">
+                <div class="row-fluid">
+                    <label for="verify_percent">Progress: {{ num_verified }} / {{ num_items }}</label>
+                    <div id="verify_percent" class="progress" style="height: 2rem;">
+                        <div class="progress-bar p-3" role="progressbar" aria-valuenow="{{ verify_percent }}" aria-valuemin="0" aria-valuemax="100">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script>
+         var wavesurfer = {};
+
+         function q(id) {
+             return document.querySelector(id);
+         }
+
+         document.addEventListener('DOMContentLoaded', function() {
+             wavesurfer = WaveSurfer.create({
+                 container: q('#waveform'),
+                 height: 200,
+                 minPxPerSec: 200,
+                 scrollParent: true,
+                 waveColor: '#A8DBA8',
+                 progressColor: '#3B8686',
+                 normalize: true,
+                 showTime: true,
+                 plugins: [
+                     WaveSurfer.regions.create({
+                         regionsMinLength: 0.1,
+                         regions: [
+                             {
+                                 start: {{ fragment.begin }},
+                                 end: {{ fragment.end }},
+                                 loop: false,
+                                 color: 'hsla(400, 100%, 30%, 0.5)'
+                             }
+                         ],
+                         dragSelection: {
+                             slop: 5
+                         }
+                     })
+                 ]
+             });
+
+             wavesurfer.load('media/{{ fragment.id }}');
+
+             let region = Object.values(wavesurfer.regions.list)[0];
+             region.element.children[0].style.width='4px';
+             region.element.children[1].style.width='4px';
+
+             wavesurfer.on('region-update-end', function() {
+                 q('#verifyBegin').value = region.start;
+                 q('#verifyEnd').value = region.end;
+             })
+
+             q('#text').addEventListener('change', function() {
+                 q('#verifyText').value = q('#text').value;
+             });
+
+             q('[data-action="play"]')
+                 .addEventListener('click', function() {
+                     region.play();
+                 });
+
+             q('[data-action="pause"]')
+                 .addEventListener('click', function() {
+                     wavesurfer.playPause();
+                 });
+
+             q('[data-action="stop"]')
+                 .addEventListener('click', function() {
+                     wavesurfer.stop();
+                 });
+
+             q('[data-action="zoom"]')
+                 .addEventListener('click', function() {
+                     wavesurfer.zoom(q('#zoom').value);
+                 });
+         });
+        </script>
+    </body>
+</html>
