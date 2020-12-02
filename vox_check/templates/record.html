@@ -17,6 +17,11 @@
         <script src="js/wavesurfer.microphone.min.js"></script>
     </head>
     <body>
+        <h2 class="p-2 bg-dark text-light font-weight-bold">
+            <img src="img/rhasspy-icon.svg" height="50px" alt="Rhasspy icon">
+            RHASSPY
+        </h2>
+
         <form id="form" method="POST" onsubmit="submitAudio()">
             <input type="hidden" name="language" value="{{ language }}">
             <input type="hidden" name="userId" value="{{ user_id }}">
@@ -26,6 +31,11 @@
             <div class="container-fluid">
                 <div class="row-fluid mt-3">
                     <div id="alert" class="alert alert-info">Waiting for microphone to be enabled</div>
+                </div>
+                <div class="row-fluid text-center">
+                    <p>
+                        Record yourself speaking the text below. You can play it back or re-record before submitting.
+                    </p>
                 </div>
                 <div class="row-fluid">
                     <div id="waveform"></div>
@@ -54,6 +64,7 @@
                                 <i class="fas fa-upload mr-1"></i>
                                 Submit
                             </button>
+                            <i id="submittedIcon" class="fas fa-thumbs-up ml-2" title="Submitted" hidden></i>
                         </div>
                         <div class="col">
                             <audio id="clip" controls hidden></audio>
@@ -64,13 +75,22 @@
                     <div class="row-fluid">
                         <label for="complete_percent">Progress: <span id="numComplete">{{ num_complete }}</span> / <span id="numItems">{{ num_items }}</span></label>
                         <div id="complete_percent" class="progress" style="height: 2rem;">
-                            <div id="progressComplete" class="progress-bar p-3" role="progressbar" aria-valuenow="{{ complete_percent }}" aria-valuemin="0" aria-valuemax="100">
+                            <div id="progressComplete" class="progress-bar" role="progressbar" aria-valuenow="{{ complete_percent }}" aria-valuemin="0" aria-valuemax="100" style="width: {{ complete_percent }}%;">
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
         </form>
+
+        <!-- FOOTER -->
+        <hr>
+        <footer class="container mt-5">
+            <img class="float-right" src="img/terminal.svg" alt="Smiling computer terminal" height="50">
+            <p>
+                &copy; 2020 <a href="https://synesthesiam.com" alt="Link to author home page">Michael Hansen</a> &middot <a href="https://raw.githubusercontent.com/rhasspy/rhasspy/master/LICENSE">License</a>
+            </p>
+        </footer>
 
         <script>
          var wavesurfer = {};
@@ -120,27 +140,34 @@
 
              const formData = new FormData(q('#form'));
              formData.set('audio', blob, 'audio.webm');
+             formData.set('duration', q('#clip').duration);
 
              let response = await fetch('/submit', {
                  method: 'POST',
                  body: formData
-             });
+             })
+                 .then(response => response.json())
+                 .then(result => {
+                     // Update page
+                     q('#promptId').value = result.promptId;
+                     q('#promptText').value = result.promptText;
+                     q('#text').textContent = result.promptText;
 
-             let result = await response.json();
+                     q('#numComplete').textContent = result.numComplete;
+                     q('#numItems').textContent = result.numItems;
+                     q('#progressComplete').setAttribute('aria-valuenow', result.completePercent);
+                     q('#progressComplete').style.width = result.completePercent + '%';
 
-             // Update page
-             q('#promptId').value = result.promptId;
-             q('#promptText').value = result.promptText;
-             q('#text').textContent = result.promptText;
+                     setAlert('Microphone ready!', 'alert-success');
 
-             q('#numComplete').textContent = result.numComplete;
-             q('#numItems').textContent = result.numItems;
-             q('#progressComplete').setAttribute('aria-valuenow', result.completePercent);
+                     q('#submit').disabled = true;
+                     q('#clip').hidden = true;
+                     q('#submittedIcon').hidden = false;
+                 })
+                 .catch((error) => {
+                     setAlert('Error: ' + error, 'alert-danger');
+                 });
 
-             setAlert('Microphone ready!', 'alert-success');
-
-             q('#submit').disabled = true;
-             q('#clip').hidden = true;
          }
 
          document.addEventListener('DOMContentLoaded', function() {
@@ -192,6 +219,7 @@
 
                          q('#submit').disabled = true;
                          q('#clip').hidden = true;
+                         q('#submittedIcon').hidden = true;
 
                          setAlert('Recording...', 'alert-warning');
                      }

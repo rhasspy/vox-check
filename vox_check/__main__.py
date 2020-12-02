@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import asyncio
+import itertools
 import json
 import logging
 import random
@@ -66,7 +67,7 @@ class Fragment:
 class MediaItem:
     id: str
     language: str
-    mp3_path: Path
+    audio_path: Path
     fragment: Fragment
     verify_count: int = 0
 
@@ -84,6 +85,7 @@ media_by_lang = defaultdict(list)
 
 prompts_by_lang = defaultdict(dict)
 
+# Load pre-recorded media (audio books, etc.)
 _LOGGER.debug("Loading media items from %s", media_dir)
 for lang_dir in media_dir.iterdir():
     if not lang_dir.is_dir():
@@ -92,13 +94,15 @@ for lang_dir in media_dir.iterdir():
     language = lang_dir.name
 
     # Load media
-    for mp3_path in lang_dir.rglob("**/*.mp3"):
-        map_path = mp3_path.with_suffix(".json")
+    for audio_path in itertools.chain(
+        lang_dir.rglob("**/*.mp3"), lang_dir.glob("**/*.webm")
+    ):
+        map_path = audio_path.with_suffix(".json")
         if not map_path.is_file():
-            _LOGGER.warning("Skipping %s (no sync map)", mp3_path)
+            _LOGGER.warning("Skipping %s (no sync map)", audio_path)
             continue
 
-        media_id = str(mp3_path.relative_to(media_dir))
+        media_id = str(audio_path.relative_to(media_dir))
         with open(map_path, "r") as map_file:
             sync_map = json.load(map_file)
 
@@ -110,7 +114,7 @@ for lang_dir in media_dir.iterdir():
         )
 
         item = MediaItem(
-            id=media_id, language=language, mp3_path=mp3_path, fragment=fragment
+            id=media_id, language=language, audio_path=audio_path, fragment=fragment
         )
         media_by_id[media_id] = item
         media_by_lang[language].append(item)
@@ -305,12 +309,13 @@ async def api_submit() -> Response:
     user_id = form["userId"]
     prompt_id = form["promptId"]
     prompt_text = form["text"]
+    duration = float(form["duration"])
 
     files = await request.files
     assert "audio" in files, "No audio"
 
     # Save audio and transcription
-    user_dir = data_dir / user_id
+    user_dir = media_dir / language / user_id
     user_dir.mkdir(parents=True, exist_ok=True)
 
     audio_path = (user_dir / prompt_id).with_suffix(".webm")
@@ -320,6 +325,11 @@ async def api_submit() -> Response:
     text_path = audio_path.with_suffix(".txt")
     text_path.write_text(prompt_text)
 
+    sync_map = {"begin": 0, "end": duration, "raw_text": prompt_text}
+    map_path = audio_path.with_suffix(".json")
+    with open(map_path, "w") as map_file:
+        json.dump(sync_map, map_file)
+
     # Create new recording
     await _DB_CONN.execute(
         "INSERT INTO record (date_created, prompt_id, prompt_text, prompt_lang, user_id) VALUES (?, ?, ?, ?, ?)",
@@ -328,6 +338,21 @@ async def api_submit() -> Response:
 
     await _DB_CONN.commit()
     user_prompts[user_id].add(prompt_id)
+
+    # Add new media item to verify
+    media_id = str(audio_path.relative_to(media_dir))
+    fragment = Fragment(
+        id=media_id,
+        begin=sync_map["begin"],
+        end=sync_map["end"],
+        text=sync_map["raw_text"],
+    )
+
+    item = MediaItem(
+        id=media_id, language=language, audio_path=audio_path, fragment=fragment
+    )
+    media_by_id[media_id] = item
+    media_by_lang[language].append(item)
 
     # Get next prompt
     all_prompts = prompts_by_lang.get(language)
