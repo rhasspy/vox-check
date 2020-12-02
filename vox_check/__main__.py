@@ -21,6 +21,7 @@ from quart import (
     Response,
     exceptions,
     jsonify,
+    make_response,
     render_template,
     request,
     send_file,
@@ -28,8 +29,12 @@ from quart import (
     websocket,
 )
 
+from .utils import get_name
+
 _LOGGER = logging.getLogger("vox_check")
 _LOOP = asyncio.get_event_loop()
+
+_ONE_HUNDRED_YEARS = 60 * 60 * 24 * 365 * 100
 
 web_dir = Path(__file__).parent
 
@@ -148,7 +153,7 @@ async def setup_database():
     _DB_CONN = await aiosqlite.connect(data_dir / "vox_check.db")
     await _DB_CONN.execute(
         "CREATE TABLE IF NOT EXISTS verify "
-        + "(id INTEGER PRIMARY KEY AUTOINCREMENT, date_created TEXT, media_id TEXT, media_begin FLOAT, media_end FLOAT, media_text TEXT);"
+        + "(id INTEGER PRIMARY KEY AUTOINCREMENT, date_created TEXT, media_id TEXT, media_begin FLOAT, media_end FLOAT, media_text TEXT, user_id TEXT);"
     )
 
     await _DB_CONN.execute(
@@ -191,23 +196,11 @@ app = quart_cors.cors(app)
 
 @app.route("/")
 async def api_index() -> Response:
+    user_id = request.cookies.get("user_id")
+    if not user_id:
+        user_id = "_".join(get_name())
 
-    media_file_path = media_dir / "jordensinre_01_witt_64kb.mp3"
-    sync_map_path = media_file_path.with_suffix(".json")
-    with open(sync_map_path, "r") as sync_map_file:
-        sync_map = json.load(sync_map_file)
-
-    fragments = {}
-    for frag_map in sync_map["fragments"]:
-        fragment = Fragment(
-            id=frag_map["id"],
-            begin=float(frag_map["begin"]),
-            end=float(frag_map["end"]),
-            text="\n".join(frag_map["lines"]),
-        )
-        fragments[fragment.id] = fragment
-
-    return await render_template("index.html", fragments=fragments)
+    return await render_template("index.html", user_id=user_id)
 
 
 # -----------------------------------------------------------------------------
@@ -220,6 +213,7 @@ media_lock = asyncio.Lock()
 async def api_verify() -> Response:
     if request.method == "POST":
         form = await request.form
+        user_id = form["userId"]
         language = form["language"]
         fragment = Fragment(
             id=str(form["mediaId"]),
@@ -249,6 +243,7 @@ async def api_verify() -> Response:
 
             await _DB_CONN.commit()
     else:
+        user_id = request.args["userId"]
         language = request.args.get("language", "en-us")
 
     # Choose the next item
@@ -259,14 +254,22 @@ async def api_verify() -> Response:
     num_verified = sum(1 for i in items if i.verify_count > 0)
     verify_percent = int((num_verified / len(items)) * 100)
 
-    return await render_template(
-        "verify.html",
-        fragment=item.fragment,
-        language=language,
-        verify_percent=verify_percent,
-        num_verified=num_verified,
-        num_items=len(items),
+    response = await make_response(
+        await render_template(
+            "verify.html",
+            user_id=user_id,
+            fragment=item.fragment,
+            language=language,
+            verify_percent=verify_percent,
+            num_verified=num_verified,
+            num_items=len(items),
+        )
     )
+
+    # Save user id
+    response.set_cookie("user_id", user_id, max_age=_ONE_HUNDRED_YEARS)
+
+    return response
 
 
 # -----------------------------------------------------------------------------
@@ -290,16 +293,23 @@ async def api_record() -> Response:
     prompt_id = next(iter(incomplete_prompts))
     prompt_text = prompts_by_lang[language][prompt_id]
 
-    return await render_template(
-        "record.html",
-        language=language,
-        user_id=user_id,
-        prompt_id=prompt_id,
-        text=prompt_text,
-        num_complete=num_complete,
-        num_items=num_items,
-        complete_percent=complete_percent,
+    response = await make_response(
+        await render_template(
+            "record.html",
+            language=language,
+            user_id=user_id,
+            prompt_id=prompt_id,
+            text=prompt_text,
+            num_complete=num_complete,
+            num_items=num_items,
+            complete_percent=complete_percent,
+        )
     )
+
+    # Save user id
+    response.set_cookie("user_id", user_id, max_age=_ONE_HUNDRED_YEARS)
+
+    return response
 
 
 @app.route("/submit", methods=["POST"])
