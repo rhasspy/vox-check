@@ -19,7 +19,7 @@
     <body>
         <header>
             <nav class="navbar navbar-expand-md bg-dark text-light">
-                <a class="navbar-brand" href="/" title="Back to home page">
+                <a class="navbar-brand" href="index.html" title="Back to home page">
                     <img src="img/rhasspy-icon.svg" height="50" alt="Rhasspy icon">
                 </a>
                 <h2 class="font-weight-bold">
@@ -94,7 +94,7 @@
         <footer class="container mt-5">
             <img class="float-right" src="img/terminal.svg" alt="Smiling computer terminal" height="50">
             <p>
-                &copy; 2020 <a href="https://synesthesiam.com" alt="Link to author home page">Michael Hansen</a> &middot <a href="https://raw.githubusercontent.com/rhasspy/rhasspy/master/LICENSE">License</a>
+                &copy; 2020 <a href="https://synesthesiam.com" alt="Link to author home page">Michael Hansen</a> &middot; <a href="https://raw.githubusercontent.com/rhasspy/rhasspy/master/LICENSE">License</a>
             </p>
         </footer>
 
@@ -148,11 +148,17 @@
              formData.set('audio', blob, 'audio.webm');
              formData.set('duration', q('#clip').duration);
 
-             let response = await fetch('/submit', {
+             let response = await fetch('submit', {
                  method: 'POST',
                  body: formData
              })
-                 .then(response => response.json())
+                 .then(response => {
+                     if (!response.ok) {
+                         throw Error(response.statusText);
+                     }
+
+		     return response.json();
+		 })
                  .then(result => {
                      // Update page
                      q('#promptId').value = result.promptId;
@@ -171,7 +177,7 @@
                      q('#submittedIcon').hidden = false;
                  })
                  .catch((error) => {
-                     setAlert('Error: ' + error, 'alert-danger');
+                     setAlert('Failed to submit: ' + error, 'alert-danger');
                  });
 
          }

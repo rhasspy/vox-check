@@ -195,6 +195,7 @@ app = quart_cors.cors(app)
 
 
 @app.route("/")
+@app.route("/index.html")
 async def api_index() -> Response:
     user_id = request.cookies.get("user_id")
     if not user_id:

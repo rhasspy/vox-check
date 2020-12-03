@@ -13,7 +13,7 @@
     <body>
         <header>
             <nav class="navbar navbar-expand-md bg-dark text-light">
-                <a class="navbar-brand" href="/" title="Back to home page">
+                <a class="navbar-brand" href="index.html" title="Back to home page">
                     <img src="img/rhasspy-icon.svg" height="50" alt="Rhasspy icon">
                 </a>
                 <h2 class="font-weight-bold">
@@ -42,7 +42,7 @@
             </div>
             <div class="row mt-5">
                 <div class="col">
-                    <form id="formRecord" method="get" action="/record">
+                    <form id="formRecord" method="get" action="record">
                         <input id="recordLanguage" type="hidden" name="language" value="en-us">
                         <input id="recordUserId" type="hidden" name="userId" value="{{ user_id }}">
                         <button type="submit" class="btn btn-danger w-50">
@@ -55,7 +55,7 @@
                     </form>
                 </div>
                 <div class="col">
-                    <form id="formRecord" method="get" action="/verify">
+                    <form id="formRecord" method="get" action="verify">
                         <input id="verifyLanguage" type="hidden" name="language" value="en-us">
                         <input id="verifyUserId" type="hidden" name="userId" value="{{ user_id }}">
                         <button type="submit" class="btn btn-success w-50">
