@@ -11,4 +11,4 @@ if [[ -d "${venv}" ]]; then
 fi
 
 export PYTHONPATH="${src_dir}"
-python3 -m vox_check
+python3 -m vox_check "$@"
