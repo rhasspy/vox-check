@@ -37,6 +37,7 @@
                 <label for="language" class="mr-2">Choose a language:</label>
                 <select id="language">
                     <option value="en-us" selected>U.S. English</option>
+                    <option value="fa">Persian (fārsi)</option>
                     <option value="sv-se">Swedish (svenska)</option>
                 </select>
             </div>
@@ -80,14 +81,14 @@
          }
 
          document.addEventListener('DOMContentLoaded', function() {
+             q('#language').value = '{{ language }}';
+
              q('#language').addEventListener('change', function() {
                  let language = q('#language').value;
                  q('#recordLanguage').value = language;
                  q('#verifyLanguage').value = language;
              });
-         });
 
-         document.addEventListener('DOMContentLoaded', function() {
              q('#userId').addEventListener('change', function() {
                  let userId = q('#userId').value;
                  q('#recordUserId').value = userId;

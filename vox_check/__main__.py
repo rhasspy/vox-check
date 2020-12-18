@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import asyncio
+import csv
 import itertools
 import json
 import logging
@@ -128,12 +129,9 @@ for lang_dir in media_dir.iterdir():
     prompts_path = lang_dir / "prompts.csv"
     if prompts_path.is_file():
         with open(prompts_path, "r") as prompts_file:
-            for line in prompts_file:
-                line = line.strip()
-                if not line:
-                    continue
-
-                prompt_id, prompt_text = line.split("|", maxsplit=1)
+            prompts_reader = csv.reader(prompts_file, delimiter="|")
+            for row in prompts_reader:
+                prompt_id, prompt_text = row[0], row[1]
                 prompts_by_lang[language][prompt_id] = prompt_text
 
 # -----------------------------------------------------------------------------
@@ -201,7 +199,9 @@ async def api_index() -> Response:
     if not user_id:
         user_id = "_".join(get_name())
 
-    return await render_template("index.html", user_id=user_id)
+    language = request.cookies.get("language", "en-us")
+
+    return await render_template("index.html", user_id=user_id, language=language)
 
 
 # -----------------------------------------------------------------------------
@@ -267,9 +267,13 @@ async def api_verify() -> Response:
         )
     )
 
-    # Save user id
+    # Save user id and language
     response.set_cookie(
         "user_id", user_id, max_age=_ONE_HUNDRED_YEARS, samesite="Strict"
+    )
+
+    response.set_cookie(
+        "language", language, max_age=_ONE_HUNDRED_YEARS, samesite="Strict"
     )
 
     return response
@@ -309,9 +313,13 @@ async def api_record() -> Response:
         )
     )
 
-    # Save user id
+    # Save user id and language
     response.set_cookie(
         "user_id", user_id, max_age=_ONE_HUNDRED_YEARS, samesite="Strict"
+    )
+
+    response.set_cookie(
+        "language", language, max_age=_ONE_HUNDRED_YEARS, samesite="Strict"
     )
 
     return response
