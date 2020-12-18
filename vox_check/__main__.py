@@ -268,7 +268,9 @@ async def api_verify() -> Response:
     )
 
     # Save user id
-    response.set_cookie("user_id", user_id, max_age=_ONE_HUNDRED_YEARS)
+    response.set_cookie(
+        "user_id", user_id, max_age=_ONE_HUNDRED_YEARS, samesite="Strict"
+    )
 
     return response
 
@@ -308,7 +310,9 @@ async def api_record() -> Response:
     )
 
     # Save user id
-    response.set_cookie("user_id", user_id, max_age=_ONE_HUNDRED_YEARS)
+    response.set_cookie(
+        "user_id", user_id, max_age=_ONE_HUNDRED_YEARS, samesite="Strict"
+    )
 
     return response
 
