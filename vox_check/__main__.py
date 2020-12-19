@@ -101,7 +101,9 @@ for lang_dir in media_dir.iterdir():
 
     # Load media
     for audio_path in itertools.chain(
-        lang_dir.rglob("**/*.mp3"), lang_dir.glob("**/*.webm")
+        lang_dir.rglob("**/*.mp3"),
+        lang_dir.glob("**/*.webm"),
+        lang_dir.glob("**/*.wav"),
     ):
         map_path = audio_path.with_suffix(".json")
         if not map_path.is_file():
@@ -333,15 +335,20 @@ async def api_submit() -> Response:
     prompt_id = form["promptId"]
     prompt_text = form["text"]
     duration = float(form["duration"])
+    audio_format = form["format"]
 
     files = await request.files
     assert "audio" in files, "No audio"
+
+    suffix = ".webm"
+    if "wav" in audio_format:
+        suffix = ".wav"
 
     # Save audio and transcription
     user_dir = media_dir / language / user_id
     user_dir.mkdir(parents=True, exist_ok=True)
 
-    audio_path = (user_dir / prompt_id).with_suffix(".webm")
+    audio_path = (user_dir / prompt_id).with_suffix(suffix)
     with open(audio_path, "wb") as audio_file:
         files["audio"].save(audio_file)
 

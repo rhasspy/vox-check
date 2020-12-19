@@ -104,6 +104,7 @@
          var recorder = null;
          var chunks = [];
          var blob = null;
+         var audioFormat = null;
 
          function q(id) {
              return document.querySelector(id);
@@ -145,8 +146,9 @@
              setAlert('Submitting data...', 'alert-warning');
 
              const formData = new FormData(q('#form'));
-             formData.set('audio', blob, 'audio.webm');
+             formData.set('audio', blob, 'audio');
              formData.set('duration', q('#clip').duration);
+             formData.set('format', audioFormat);
 
              let response = await fetch('submit', {
                  method: 'POST',
@@ -185,6 +187,12 @@
          document.addEventListener('DOMContentLoaded', function() {
              q('#record').disabled = true;
              q('#submit').disabled = true;
+
+             const preferredFormat = 'audio/ogg; codecs=opus';
+             const audio = document.createElement('audio');
+             audioFormat = audio.canPlayType(preferredFormat)
+                          ? preferredFormat
+                          : 'audio/wav';
 
              wavesurfer = WaveSurfer.create({
                  container: q('#waveform'),
