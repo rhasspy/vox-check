@@ -82,6 +82,8 @@
 
          document.addEventListener('DOMContentLoaded', function() {
              q('#language').value = '{{ language }}';
+             q('#recordLanguage').value = '{{ language }}';
+             q('#verifyLanguage').value = '{{ language }}';
 
              q('#language').addEventListener('change', function() {
                  let language = q('#language').value;
