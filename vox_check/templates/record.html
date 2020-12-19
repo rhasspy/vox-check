@@ -205,7 +205,11 @@
              });
 
              wavesurfer.microphone.on('deviceReady', function(stream) {
-                 recorder = new window.MediaRecorder(stream);
+                 if (MediaRecorder === undefined) {
+                     recorder = new window.MediaRecorder(stream);
+                 } else {
+                     recorder = new MediaRecorder(stream);
+                 }
 
                  q('#record').disabled = false;
                  setAlert('Microphone ready!', 'alert-success');
