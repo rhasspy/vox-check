@@ -46,7 +46,7 @@
                     <form id="formRecord" method="get" action="record">
                         <input id="recordLanguage" type="hidden" name="language" value="en-us">
                         <input id="recordUserId" type="hidden" name="userId" value="{{ user_id }}">
-                        <button type="submit" class="btn btn-danger w-50">
+                        <button type="submit" class="btn btn-danger form-control">
                             <i class="fas fa-3x fa-microphone"></i>
                             <h3>Record</h3>
                         </button>
@@ -59,12 +59,25 @@
                     <form id="formRecord" method="get" action="verify">
                         <input id="verifyLanguage" type="hidden" name="language" value="en-us">
                         <input id="verifyUserId" type="hidden" name="userId" value="{{ user_id }}">
-                        <button type="submit" class="btn btn-success w-50">
+                        <button type="submit" class="btn btn-success form-control">
                             <i class="fas fa-3x fa-check"></i>
                             <h3>Verify</h3>
                         </button>
                         <p>
                             Match spoken audio with text and trim noise
+                        </p>
+                    </form>
+                </div>
+                <div class="col">
+                    <form id="formDownload" method="get" action="download">
+                        <input id="downloadLanguage" type="hidden" name="language" value="en-us">
+                        <input id="downloadUserId" type="hidden" name="userId" value="{{ user_id }}">
+                        <button type="submit" class="btn btn-primary form-control">
+                            <i class="fas fa-3x fa-download"></i>
+                            <h3>Download</h3>
+                        </button>
+                        <p>
+                            Download your data and get permalinks
                         </p>
                     </form>
                 </div>
@@ -76,25 +89,31 @@
             <p>A: It ensures we don't show you the same sentence twice. This is not an account, and there is no password. Pick something unique!</p>
         </div>
         <script>
+         var verbs = ['record', 'verify', 'download']
+
          function q(id) {
              return document.querySelector(id);
          }
 
          document.addEventListener('DOMContentLoaded', function() {
              q('#language').value = '{{ language }}';
-             q('#recordLanguage').value = '{{ language }}';
-             q('#verifyLanguage').value = '{{ language }}';
+
+             verbs.forEach(function(verb) {
+                 q('#' + verb + 'Language').value = '{{ language }}';
+             });
 
              q('#language').addEventListener('change', function() {
                  let language = q('#language').value;
-                 q('#recordLanguage').value = language;
-                 q('#verifyLanguage').value = language;
+                 verbs.forEach(function(verb) {
+                     q('#' + verb + 'Language').value = language;
+                 });
              });
 
              q('#userId').addEventListener('change', function() {
                  let userId = q('#userId').value;
-                 q('#recordUserId').value = userId;
-                 q('#verifyUserId').value = userId;
+                 verbs.forEach(function(verb) {
+                     q('#' + verb + 'UserId').value = userId;
+                 });
              });
          });
         </script>

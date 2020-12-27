@@ -6,7 +6,9 @@ import itertools
 import json
 import logging
 import random
+import subprocess
 import signal
+import tempfile
 import typing
 from collections import defaultdict
 from dataclasses import dataclass
@@ -406,6 +408,86 @@ async def api_submit() -> Response:
             "completePercent": complete_percent,
         }
     )
+
+
+# -----------------------------------------------------------------------------
+
+
+@app.route("/download")
+async def api_download() -> Response:
+    user_id = request.args["userId"]
+    language = request.args.get("language", "en-us")
+
+    items = []
+    user_dir = media_dir / language / user_id
+
+    for file_path in user_dir.iterdir():
+        if file_path.is_file() and (file_path.suffix in (".webm", ".wav")):
+            text_path = file_path.with_suffix(".txt")
+            if not text_path.is_file():
+                continue
+
+            mtime = datetime.fromtimestamp(file_path.stat().st_mtime)
+            text = text_path.read_text().strip()
+            items.append(
+                {
+                    "id": file_path.stem,
+                    "name": file_path.name,
+                    "text": text,
+                    "date": mtime,
+                }
+            )
+
+    items = sorted(items, key=lambda i: i["date"], reverse=True)
+
+    response = await make_response(
+        await render_template(
+            "download.html", user_id=user_id, language=language, items=items
+        )
+    )
+
+    # Save user id and language
+    response.set_cookie(
+        "user_id", user_id, max_age=_ONE_HUNDRED_YEARS, samesite="Strict"
+    )
+
+    response.set_cookie(
+        "language", language, max_age=_ONE_HUNDRED_YEARS, samesite="Strict"
+    )
+
+    return response
+
+
+# -----------------------------------------------------------------------------
+
+
+@app.route("/download-all")
+async def api_download_all() -> Response:
+    user_id = request.args["userId"]
+    language = request.args.get("language", "en-us")
+
+    user_dir = media_dir / language / user_id
+    assert user_dir.is_dir(), f"Invalid directory"
+
+    async def generate():
+        proc = await asyncio.create_subprocess_exec(
+            "tar",
+            "-cz",
+            "--to-stdout",
+            str(Path(language) / user_id),
+            cwd=media_dir,
+            stdout=asyncio.subprocess.PIPE,
+        )
+
+        stdout, _ = await proc.communicate()
+        yield stdout
+
+    response = app.response_class(generate(), mimetype="application/gzip")
+    response.headers.set(
+        "Content-Disposition", "attachment", filename=f"{language}_{user_id}.tar.gz"
+    )
+
+    return response
 
 
 # ---------------------------------------------------------------------
