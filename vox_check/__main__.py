@@ -410,6 +410,39 @@ async def api_submit() -> Response:
     )
 
 
+@app.route("/skip", methods=["POST"])
+async def api_skip() -> Response:
+    form = await request.form
+    language = form["language"]
+    user_id = form["userId"]
+    prompt_id = form["promptId"]
+
+    user_prompts[user_id].add(prompt_id)
+
+    # Get next prompt
+    all_prompts = prompts_by_lang.get(language)
+    assert all_prompts, f"No prompts for language {language}"
+
+    incomplete_prompts = set(all_prompts.keys()) - user_prompts[user_id]
+    assert incomplete_prompts, "All prompts complete!"
+
+    num_complete = len(all_prompts) - len(incomplete_prompts)
+    num_items = len(all_prompts)
+    complete_percent = num_complete / num_items
+    prompt_id = next(iter(incomplete_prompts))
+    prompt_text = prompts_by_lang[language][prompt_id]
+
+    return jsonify(
+        {
+            "promptId": prompt_id,
+            "promptText": prompt_text,
+            "numComplete": num_complete,
+            "numItems": num_items,
+            "completePercent": complete_percent,
+        }
+    )
+
+
 # -----------------------------------------------------------------------------
 
 
