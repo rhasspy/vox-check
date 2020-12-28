@@ -60,21 +60,33 @@
                 </div>
             </div>
             <div class="control-group mt-5">
-                <div class="controls row-fluid">
-                    <form method="POST">
-                        <input type="hidden" name="userId" value="{{ user_id }}">
-                        <input type="hidden" name="mediaId" value="{{ fragment.id }}">
-                        <input type="hidden" name="language" value="{{ language }}">
-                        <input type="hidden" id="verifyBegin" name="begin" value="{{ fragment.begin }}">
-                        <input type="hidden" id="verifyEnd" name="end" value="{{ fragment.end }}">
-                        <input type="hidden" id="verifyText" name="text" value="{{ fragment.text }}">
+                <form method="POST">
+                    <input type="hidden" name="userId" value="{{ user_id }}">
+                    <input type="hidden" name="mediaId" value="{{ fragment.id }}">
+                    <input type="hidden" name="language" value="{{ language }}">
+                    <input type="hidden" id="verifyBegin" name="begin" value="{{ fragment.begin }}">
+                    <input type="hidden" id="verifyEnd" name="end" value="{{ fragment.end }}">
+                    <input type="hidden" id="verifyText" name="text" value="{{ fragment.text }}">
+                    <input type="hidden" id="verifySkip" name="skip" value="false">
 
-                        <button type="submit" class="btn btn-lg btn-success" data-action="verify">
-                            <i class="fas fa-check mr-1"></i>
-                            Verify
-                        </button>
-                    </form>
-                </div>
+                    <div class="controls row">
+                        <div class="col-auto">
+                            <button type="submit" class="btn btn-lg btn-success" data-action="verify">
+                                <i class="fas fa-check mr-1"></i>
+                                Verify
+                            </button>
+                        </div>
+                        <div class="col">
+                            &nbsp;
+                        </div>
+                        <div class="col-auto pull-right">
+                            <button id="skip" type="submit" class="btn btn-lg btn-warning" data-action="skip" onclick="setSkip()">
+                                <i class="fas fa-arrow-right mr-1"></i>
+                                Skip
+                            </button>
+                        </div>
+                    </div>
+                </form>
             </div>
             <div class="control-group mt-5">
                 <div class="row-fluid">
@@ -92,6 +104,10 @@
 
          function q(id) {
              return document.querySelector(id);
+         }
+
+         function setSkip(e) {
+             q('#verifySkip').value = 'true';
          }
 
          document.addEventListener('DOMContentLoaded', function() {

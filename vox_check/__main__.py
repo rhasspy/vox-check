@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
+"""Voice recording and verification web server."""
 import argparse
 import asyncio
 import csv
 import itertools
 import json
 import logging
-import random
-import subprocess
 import signal
-import tempfile
 import typing
 from collections import defaultdict
 from dataclasses import dataclass
@@ -22,14 +20,11 @@ import quart_cors
 from quart import (
     Quart,
     Response,
-    exceptions,
     jsonify,
     make_response,
     render_template,
     request,
-    send_file,
     send_from_directory,
-    websocket,
 )
 
 from .utils import get_name
@@ -65,6 +60,8 @@ _LOGGER.debug(_ARGS)
 
 @dataclass
 class Fragment:
+    """Trimmed media fragment"""
+
     id: str
     begin: float
     end: float
@@ -73,11 +70,14 @@ class Fragment:
 
 @dataclass
 class MediaItem:
+    """Single audio item with text prompt"""
+
     id: str
     language: str
     audio_path: Path
     fragment: Fragment
     verify_count: int = 0
+    skipped: bool = False
 
 
 # -----------------------------------------------------------------------------
@@ -91,52 +91,57 @@ data_dir = web_dir / "data"
 media_by_id = {}
 media_by_lang = defaultdict(list)
 
-prompts_by_lang = defaultdict(dict)
+prompts_by_lang: typing.Dict[str, typing.Dict[str, str]] = defaultdict(dict)
 
-# Load pre-recorded media (audio books, etc.)
-_LOGGER.debug("Loading media items from %s", media_dir)
-for lang_dir in media_dir.iterdir():
-    if not lang_dir.is_dir():
-        continue
 
-    language = lang_dir.name
-
-    # Load media
-    for audio_path in itertools.chain(
-        lang_dir.rglob("**/*.mp3"),
-        lang_dir.glob("**/*.webm"),
-        lang_dir.glob("**/*.wav"),
-    ):
-        map_path = audio_path.with_suffix(".json")
-        if not map_path.is_file():
-            _LOGGER.warning("Skipping %s (no sync map)", audio_path)
+def load_items():
+    """Load pre-recorded media (audio books, etc.)"""
+    _LOGGER.debug("Loading media items from %s", media_dir)
+    for lang_dir in media_dir.iterdir():
+        if not lang_dir.is_dir():
             continue
 
-        media_id = str(audio_path.relative_to(media_dir))
-        with open(map_path, "r") as map_file:
-            sync_map = json.load(map_file)
+        language = lang_dir.name
 
-        fragment = Fragment(
-            id=media_id,
-            begin=sync_map["begin"],
-            end=sync_map["end"],
-            text=sync_map["raw_text"],
-        )
+        # Load media
+        for audio_path in itertools.chain(
+            lang_dir.rglob("**/*.mp3"),
+            lang_dir.glob("**/*.webm"),
+            lang_dir.glob("**/*.wav"),
+        ):
+            map_path = audio_path.with_suffix(".json")
+            if not map_path.is_file():
+                _LOGGER.warning("Skipping %s (no sync map)", audio_path)
+                continue
 
-        item = MediaItem(
-            id=media_id, language=language, audio_path=audio_path, fragment=fragment
-        )
-        media_by_id[media_id] = item
-        media_by_lang[language].append(item)
+            media_id = str(audio_path.relative_to(media_dir))
+            with open(map_path, "r") as map_file:
+                sync_map = json.load(map_file)
 
-    # Load prompts
-    prompts_path = lang_dir / "prompts.csv"
-    if prompts_path.is_file():
-        with open(prompts_path, "r") as prompts_file:
-            prompts_reader = csv.reader(prompts_file, delimiter="|")
-            for row in prompts_reader:
-                prompt_id, prompt_text = row[0], row[1]
-                prompts_by_lang[language][prompt_id] = prompt_text
+            fragment = Fragment(
+                id=media_id,
+                begin=sync_map["begin"],
+                end=sync_map["end"],
+                text=sync_map["raw_text"],
+            )
+
+            item = MediaItem(
+                id=media_id, language=language, audio_path=audio_path, fragment=fragment
+            )
+            media_by_id[media_id] = item
+            media_by_lang[language].append(item)
+
+        # Load prompts
+        prompts_path = lang_dir / "prompts.csv"
+        if prompts_path.is_file():
+            with open(prompts_path, "r") as prompts_file:
+                prompts_reader = csv.reader(prompts_file, delimiter="|")
+                for row in prompts_reader:
+                    prompt_id, prompt_text = row[0], row[1]
+                    prompts_by_lang[language][prompt_id] = prompt_text
+
+
+load_items()
 
 # -----------------------------------------------------------------------------
 # Setup Database
@@ -148,6 +153,7 @@ user_prompts = defaultdict(set)
 
 
 async def setup_database():
+    """Create sqlite3 database"""
     global _DB_CONN
 
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -167,15 +173,15 @@ async def setup_database():
     async with _DB_CONN.execute(
         "SELECT media_id, COUNT(*) FROM verify GROUP BY media_id"
     ) as cursor:
-        async for row in cursor:
-            item = media_by_id.get(row[0])
+        async for verify_row in cursor:
+            item = media_by_id.get(verify_row[0])
             if item:
-                item.verify_count = row[1]
+                item.verify_count = verify_row[1]
 
     # Update completed prompts
     async with _DB_CONN.execute("SELECT user_id, prompt_id FROM record") as cursor:
-        async for row in cursor:
-            user_prompts[row[0]].add(row[1])
+        async for record_row in cursor:
+            user_prompts[record_row[0]].add(record_row[1])
 
 
 _LOGGER.debug("Setting up databse")
@@ -198,7 +204,8 @@ app = quart_cors.cors(app)
 
 @app.route("/")
 @app.route("/index.html")
-async def api_index() -> Response:
+async def api_index() -> str:
+    """Main page"""
     user_id = request.cookies.get("user_id")
     if not user_id:
         user_id = "_".join(get_name())
@@ -216,45 +223,56 @@ media_lock = asyncio.Lock()
 
 @app.route("/verify", methods=["GET", "POST"])
 async def api_verify() -> Response:
+    """Verify a single media item"""
     if request.method == "POST":
         form = await request.form
         user_id = form["userId"]
         language = form["language"]
-        fragment = Fragment(
-            id=str(form["mediaId"]),
-            begin=float(form["begin"]),
-            end=float(form["end"]),
-            text=str(form["text"]).strip(),
-        )
+        skip = form["skip"].strip().lower() == "true"
 
         async with media_lock:
-            item = media_by_id[fragment.id]
-            if item.verify_count == 0:
-                item.fragment = fragment
+            item = media_by_id[form["mediaId"]]
+            if skip:
+                item.skipped = True
+            else:
+                fragment = Fragment(
+                    id=str(form["mediaId"]),
+                    begin=float(form["begin"]),
+                    end=float(form["end"]),
+                    text=str(form["text"]).strip(),
+                )
 
-            item.verify_count += 1
+                if item.verify_count == 0:
+                    item.fragment = fragment
 
-            # Create new verification
-            await _DB_CONN.execute(
-                "INSERT INTO verify (date_created, media_id, media_begin, media_end, media_text) VALUES (?, ?, ?, ?, ?)",
-                (
-                    datetime.now(timezone.utc),
-                    fragment.id,
-                    fragment.begin,
-                    fragment.end,
-                    fragment.text,
-                ),
-            )
+                item.verify_count += 1
 
-            await _DB_CONN.commit()
+                # Create new verification
+                assert _DB_CONN
+                await _DB_CONN.execute(
+                    "INSERT INTO verify (date_created, media_id, media_begin, media_end, media_text) VALUES (?, ?, ?, ?, ?)",
+                    (
+                        datetime.now(timezone.utc),
+                        fragment.id,
+                        fragment.begin,
+                        fragment.end,
+                        fragment.text,
+                    ),
+                )
+
+                await _DB_CONN.commit()
     else:
         user_id = request.args["userId"]
         language = request.args.get("language", "en-us")
 
     # Choose the next item
     items = sorted(media_by_lang[language], key=lambda item: item.verify_count)
-    assert items, f"No items for language {language}"
-    item = items[0]
+    item = None
+    for item in items:
+        if not item.skipped:
+            break
+
+    assert item, f"No items for language {language}"
 
     num_verified = sum(1 for i in items if i.verify_count > 0)
     verify_percent = int((num_verified / len(items)) * 100)
@@ -288,6 +306,7 @@ async def api_verify() -> Response:
 
 @app.route("/record")
 async def api_record() -> Response:
+    """Record audio for a text prompt"""
     language = request.args.get("language", "en-us")
     user_id = request.args.get("userId")
 
@@ -331,6 +350,7 @@ async def api_record() -> Response:
 
 @app.route("/submit", methods=["POST"])
 async def api_submit() -> Response:
+    """Submit audio for a text prompt"""
     form = await request.form
     language = form["language"]
     user_id = form["userId"]
@@ -363,6 +383,7 @@ async def api_submit() -> Response:
         json.dump(sync_map, map_file)
 
     # Create new recording
+    assert _DB_CONN
     await _DB_CONN.execute(
         "INSERT INTO record (date_created, prompt_id, prompt_text, prompt_lang, user_id) VALUES (?, ?, ?, ?, ?)",
         (datetime.now(timezone.utc), prompt_id, prompt_text, language, user_id),
@@ -412,6 +433,7 @@ async def api_submit() -> Response:
 
 @app.route("/skip", methods=["POST"])
 async def api_skip() -> Response:
+    """Skip recording a media item"""
     form = await request.form
     language = form["language"]
     user_id = form["userId"]
@@ -448,6 +470,7 @@ async def api_skip() -> Response:
 
 @app.route("/download")
 async def api_download() -> Response:
+    """Permalink for single media items"""
     user_id = request.args["userId"]
     language = request.args.get("language", "en-us")
 
@@ -496,6 +519,7 @@ async def api_download() -> Response:
 
 @app.route("/download-all")
 async def api_download_all() -> Response:
+    """Download all media items for a user in a .tar.gz"""
     user_id = request.args["userId"]
     language = request.args.get("language", "en-us")
 
@@ -600,4 +624,5 @@ try:
 except KeyboardInterrupt:
     _LOOP.call_soon(shutdown_event.set)
 finally:
-    _LOOP.run_until_complete(_DB_CONN.close())
+    if _DB_CONN:
+        _LOOP.run_until_complete(_DB_CONN.close())

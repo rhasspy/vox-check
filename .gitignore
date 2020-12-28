@@ -1,5 +1,6 @@
 /.venv/
 __pycache__/
+.mypy_cache/
 vox_check/data/vox_check.db
 vox_check/media/**/*.webm
 vox_check/media/**/*.wav

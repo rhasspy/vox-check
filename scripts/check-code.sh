@@ -12,7 +12,7 @@ if [[ -d "${venv}" ]]; then
 fi
 
 dir_name="$(basename "${src_dir}")"
-python_name="$(echo "${dir_name}" | sed -e 's/-//' | sed -e 's/-/_/g')"
+python_name="$(echo "${dir_name}" | sed -e 's/-/_/g')"
 python_files=(
     "${src_dir}/${python_name}"/*.py
 )
