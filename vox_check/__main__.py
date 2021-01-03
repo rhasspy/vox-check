@@ -63,9 +63,9 @@ class Fragment:
     """Trimmed media fragment"""
 
     id: str
-    begin: float
-    end: float
-    text: str
+    begin: float = 0
+    end: float = 0
+    text: str = ""
 
 
 @dataclass
@@ -76,7 +76,6 @@ class MediaItem:
     language: str
     audio_path: Path
     fragment: Fragment
-    verify_count: int = 0
     skipped: bool = False
 
 
@@ -88,10 +87,16 @@ media_dir = web_dir / "media"
 data_dir = web_dir / "data"
 
 # Load media items
-media_by_id = {}
-media_by_lang = defaultdict(list)
+media_by_id: typing.Dict[str, MediaItem] = {}
 
+# language -> media id -> media item
+media_by_lang: typing.Dict[str, typing.Dict[str, MediaItem]] = defaultdict(dict)
+
+# language -> prompt id -> prompt text
 prompts_by_lang: typing.Dict[str, typing.Dict[str, str]] = defaultdict(dict)
+
+# user id -> { media id }
+user_verified: typing.Dict[str, typing.Set[str]] = defaultdict(set)
 
 
 def load_items():
@@ -129,7 +134,7 @@ def load_items():
                 id=media_id, language=language, audio_path=audio_path, fragment=fragment
             )
             media_by_id[media_id] = item
-            media_by_lang[language].append(item)
+            media_by_lang[language][media_id] = item
 
         # Load prompts
         prompts_path = lang_dir / "prompts.csv"
@@ -149,6 +154,7 @@ load_items()
 
 _DB_CONN = None
 
+# user id -> { prompt id }
 user_prompts = defaultdict(set)
 
 
@@ -161,7 +167,7 @@ async def setup_database():
     _DB_CONN = await aiosqlite.connect(data_dir / "vox_check.db")
     await _DB_CONN.execute(
         "CREATE TABLE IF NOT EXISTS verify "
-        + "(id INTEGER PRIMARY KEY AUTOINCREMENT, date_created TEXT, media_id TEXT, media_begin FLOAT, media_end FLOAT, media_text TEXT, user_id TEXT);"
+        + "(id INTEGER PRIMARY KEY AUTOINCREMENT, date_created TEXT, media_id TEXT, media_begin FLOAT, media_end FLOAT, media_text TEXT, user_id TEXT, is_skipped INTEGER);"
     )
 
     await _DB_CONN.execute(
@@ -170,18 +176,16 @@ async def setup_database():
     )
 
     # Update verification counts
-    async with _DB_CONN.execute(
-        "SELECT media_id, COUNT(*) FROM verify GROUP BY media_id"
-    ) as cursor:
+    async with _DB_CONN.execute("SELECT media_id, user_id FROM verify") as cursor:
         async for verify_row in cursor:
-            item = media_by_id.get(verify_row[0])
-            if item:
-                item.verify_count = verify_row[1]
+            media_id, user_id = verify_row[0], verify_row[1]
+            user_verified[user_id].add(media_id)
 
     # Update completed prompts
     async with _DB_CONN.execute("SELECT user_id, prompt_id FROM record") as cursor:
         async for record_row in cursor:
-            user_prompts[record_row[0]].add(record_row[1])
+            user_id, prompt_id = record_row[0], record_row[1]
+            user_prompts[user_id].add(prompt_id)
 
 
 _LOGGER.debug("Setting up databse")
@@ -231,61 +235,57 @@ async def api_verify() -> Response:
         skip = form["skip"].strip().lower() == "true"
 
         async with media_lock:
-            item = media_by_id[form["mediaId"]]
-            if skip:
-                item.skipped = True
-            else:
-                fragment = Fragment(
-                    id=str(form["mediaId"]),
-                    begin=float(form["begin"]),
-                    end=float(form["end"]),
-                    text=str(form["text"]).strip(),
-                )
+            fragment = Fragment(id=str(form["mediaId"]))
+            assert fragment.id in media_by_id, f"Unknown media item {fragment.id}"
+            if not skip:
+                fragment.begin = float(form["begin"])
+                fragment.end = float(form["end"])
+                fragment.text = str(form["text"]).strip()
 
-                if item.verify_count == 0:
-                    item.fragment = fragment
+            # Create new verification
+            assert _DB_CONN
+            await _DB_CONN.execute(
+                "INSERT INTO verify (date_created, media_id, media_begin, media_end, media_text, user_id, is_skipped) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    datetime.now(timezone.utc),
+                    fragment.id,
+                    fragment.begin,
+                    fragment.end,
+                    fragment.text,
+                    user_id,
+                    skip,
+                ),
+            )
 
-                item.verify_count += 1
+            await _DB_CONN.commit()
 
-                # Create new verification
-                assert _DB_CONN
-                await _DB_CONN.execute(
-                    "INSERT INTO verify (date_created, media_id, media_begin, media_end, media_text) VALUES (?, ?, ?, ?, ?)",
-                    (
-                        datetime.now(timezone.utc),
-                        fragment.id,
-                        fragment.begin,
-                        fragment.end,
-                        fragment.text,
-                    ),
-                )
-
-                await _DB_CONN.commit()
+            # Mark as a verified item for user
+            user_verified[user_id].add(fragment.id)
     else:
         user_id = request.args["userId"]
         language = request.args.get("language", "en-us")
 
     # Choose the next item
-    items = sorted(media_by_lang[language], key=lambda item: item.verify_count)
-    item = None
-    for item in items:
-        if not item.skipped:
-            break
+    not_verified = media_by_lang[language].keys() - user_verified[user_id]
+    item: typing.Optional[MediaItem] = None
 
-    assert item, f"No items for language {language}"
+    if not_verified:
+        next_id = next(iter(not_verified))
+        item = media_by_id[next_id]
 
-    num_verified = sum(1 for i in items if i.verify_count > 0)
-    verify_percent = int((num_verified / len(items)) * 100)
+    num_items = len(media_by_lang[language])
+    num_verified = num_items - len(not_verified)
+    verify_percent = int((num_verified / num_items) * 100)
 
     response = await make_response(
         await render_template(
             "verify.html",
             user_id=user_id,
-            fragment=item.fragment,
+            fragment=item.fragment if item else None,
             language=language,
             verify_percent=verify_percent,
             num_verified=num_verified,
-            num_items=len(items),
+            num_items=num_items,
         )
     )
 
@@ -405,7 +405,7 @@ async def api_submit() -> Response:
         id=media_id, language=language, audio_path=audio_path, fragment=fragment
     )
     media_by_id[media_id] = item
-    media_by_lang[language].append(item)
+    media_by_lang[language][media_id] = item
 
     # Get next prompt
     all_prompts = prompts_by_lang.get(language)

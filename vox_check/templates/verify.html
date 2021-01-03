@@ -27,9 +27,7 @@
                 </h2>
             </nav>
         </header>
-        {% if verify_percent >= 100: %}
-        <h3 class="alert alert-success text-center">All done!</h3>
-        {% else: %}
+        {% if fragment: %}
         <div class="container-fluid mt-2">
             <div class="row-fluid text-center">
                 <p>
@@ -174,6 +172,11 @@
                  });
          });
         </script>
+        {% else: %}
+        <h3 class="alert alert-success text-center">All done!</h3>
+        <p class="text-center">
+            No more items to verify for <strong>{{ language }}</strong> (user id: <strong>{{ user_id }}</strong>)
+        </p>
         {% endif %}
 
         <!-- FOOTER -->
