@@ -416,7 +416,7 @@ async def api_submit() -> Response:
 
     num_complete = len(all_prompts) - len(incomplete_prompts)
     num_items = len(all_prompts)
-    complete_percent = num_complete / num_items
+    complete_percent = num_complete / num_items if num_items > 0 else 1
     prompt_id = next(iter(incomplete_prompts))
     prompt_text = prompts_by_lang[language][prompt_id]
 
@@ -450,7 +450,7 @@ async def api_skip() -> Response:
 
     num_complete = len(all_prompts) - len(incomplete_prompts)
     num_items = len(all_prompts)
-    complete_percent = num_complete / num_items
+    complete_percent = num_complete / num_items if num_items > 0 else 1
     prompt_id = next(iter(incomplete_prompts))
     prompt_text = prompts_by_lang[language][prompt_id]
 
