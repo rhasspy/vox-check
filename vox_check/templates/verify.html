@@ -69,6 +69,7 @@
                     <input type="hidden" id="verifyEnd" name="end" value="{{ fragment.end }}">
                     <input type="hidden" id="verifyText" name="text" value="{{ fragment.text }}">
                     <input type="hidden" id="verifySkip" name="skip" value="false">
+                    <input type="hidden" id="verifySkipped" name="skipped" value="{{ skipped }}">
 
                     <div class="controls row">
                         <div class="col-auto">
@@ -179,6 +180,9 @@
         <h3 class="alert alert-success text-center">All done!</h3>
         <p class="text-center">
             No more items to verify for <strong>{{ language }}</strong> (user id: <strong>{{ user_id }}</strong>)
+        </p>
+        <p class="text-center">
+            <a class="btn btn-warning btn-lg" href="verify?language={{ language }}&userId={{ user_id }}&skipped=true">View Skipped</a>
         </p>
         {% endif %}
 

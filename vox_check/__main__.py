@@ -6,6 +6,7 @@ import csv
 import itertools
 import json
 import logging
+import random
 import signal
 import typing
 from collections import defaultdict
@@ -97,6 +98,7 @@ prompts_by_lang: typing.Dict[str, typing.Dict[str, str]] = defaultdict(dict)
 
 # user id -> { media id }
 user_verified: typing.Dict[str, typing.Set[str]] = defaultdict(set)
+user_skipped: typing.Dict[str, typing.Set[str]] = defaultdict(set)
 
 
 def load_items():
@@ -176,10 +178,15 @@ async def setup_database():
     )
 
     # Update verification counts
-    async with _DB_CONN.execute("SELECT media_id, user_id FROM verify") as cursor:
+    async with _DB_CONN.execute(
+        "SELECT media_id, user_id, is_skipped FROM verify"
+    ) as cursor:
         async for verify_row in cursor:
-            media_id, user_id = verify_row[0], verify_row[1]
-            user_verified[user_id].add(media_id)
+            media_id, user_id, is_skipped = verify_row[0], verify_row[1], verify_row[2]
+            if is_skipped:
+                user_skipped[user_id].add(media_id)
+            else:
+                user_verified[user_id].add(media_id)
 
     # Update completed prompts
     async with _DB_CONN.execute("SELECT user_id, prompt_id FROM record") as cursor:
@@ -233,6 +240,7 @@ async def api_verify() -> Response:
         user_id = form["userId"]
         language = form["language"]
         skip = form["skip"].strip().lower() == "true"
+        include_skipped = form.get("skipped", "false").strip().lower() == "true"
 
         async with media_lock:
             fragment = Fragment(id=str(form["mediaId"]))
@@ -259,18 +267,28 @@ async def api_verify() -> Response:
 
             await _DB_CONN.commit()
 
-            # Mark as a verified item for user
-            user_verified[user_id].add(fragment.id)
+            if skip:
+                # Mark as a skipped item for user
+                user_verified[user_id].add(fragment.id)
+            else:
+                # Mark as a verified item for user
+                user_verified[user_id].add(fragment.id)
     else:
         user_id = request.args["userId"]
         language = request.args.get("language", "en-us")
+        include_skipped = request.args.get("skipped", "false").strip().lower() == "true"
 
     # Choose the next item
     not_verified = media_by_lang[language].keys() - user_verified[user_id]
+    if include_skipped:
+        not_verified.update(
+            set.intersection(set(media_by_lang[language].keys()), user_skipped[user_id])
+        )
+
     item: typing.Optional[MediaItem] = None
 
     if not_verified:
-        next_id = next(iter(not_verified))
+        next_id = random.sample(not_verified, 1)[0]
         item = media_by_id[next_id]
 
     num_items = len(media_by_lang[language])
@@ -286,6 +304,7 @@ async def api_verify() -> Response:
             verify_percent=verify_percent,
             num_verified=num_verified,
             num_items=num_items,
+            skipped=include_skipped,
         )
     )
 
@@ -320,7 +339,7 @@ async def api_record() -> Response:
     num_complete = len(all_prompts) - len(incomplete_prompts)
     num_items = len(all_prompts)
     complete_percent = num_complete / num_items
-    prompt_id = next(iter(incomplete_prompts))
+    prompt_id = random.sample(incomplete_prompts, 1)[0]
     prompt_text = prompts_by_lang[language][prompt_id]
 
     response = await make_response(
@@ -417,7 +436,7 @@ async def api_submit() -> Response:
     num_complete = len(all_prompts) - len(incomplete_prompts)
     num_items = len(all_prompts)
     complete_percent = num_complete / num_items if num_items > 0 else 1
-    prompt_id = next(iter(incomplete_prompts))
+    prompt_id = random.sample(incomplete_prompts, 1)[0]
     prompt_text = prompts_by_lang[language][prompt_id]
 
     return jsonify(
@@ -451,7 +470,7 @@ async def api_skip() -> Response:
     num_complete = len(all_prompts) - len(incomplete_prompts)
     num_items = len(all_prompts)
     complete_percent = num_complete / num_items if num_items > 0 else 1
-    prompt_id = next(iter(incomplete_prompts))
+    prompt_id = random.sample(incomplete_prompts, 1)[0]
     prompt_text = prompts_by_lang[language][prompt_id]
 
     return jsonify(
