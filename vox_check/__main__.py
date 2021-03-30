@@ -6,8 +6,10 @@ import csv
 import itertools
 import json
 import logging
+import math
 import random
 import signal
+import subprocess
 import typing
 from collections import defaultdict
 from dataclasses import dataclass
@@ -47,13 +49,20 @@ def parse_args():
         "--host", type=str, help="Host for web server", default="0.0.0.0"
     )
     parser.add_argument("--port", type=int, help="Port for web server", default=8000)
+    parser.add_argument(
+        "--debug", action="store_true", help="Print DEBUG messages to console"
+    )
 
     return parser.parse_args()
 
 
 _ARGS = parse_args()
 
-logging.basicConfig(level=logging.INFO)
+if _ARGS.debug:
+    logging.basicConfig(level=logging.DEBUG)
+else:
+    logging.basicConfig(level=logging.INFO)
+
 _LOGGER.debug(_ARGS)
 
 # -----------------------------------------------------------------------------
@@ -125,6 +134,13 @@ def load_items():
             with open(map_path, "r") as map_file:
                 sync_map = json.load(map_file)
 
+            if not math.isfinite(sync_map["end"]):
+                # Fix sync map
+                _LOGGER.debug("Fixing sync map for %s", audio_path)
+                sync_map["end"] = get_audio_duration(audio_path)
+                with open(map_path, "w") as map_file:
+                    json.dump(sync_map, map_file)
+
             fragment = Fragment(
                 id=media_id,
                 begin=sync_map["begin"],
@@ -146,6 +162,53 @@ def load_items():
                 for row in prompts_reader:
                     prompt_id, prompt_text = row[0], row[1]
                     prompts_by_lang[language][prompt_id] = prompt_text
+
+
+def get_audio_duration(audio_path: Path) -> float:
+    """Get audio duration in seconds"""
+    try:
+        # Try mutagen
+        import mutagen
+
+        audio_file = mutagen.File(str(audio_path))
+        assert audio_file
+        return audio_file.info.length
+    except Exception:
+        try:
+            # Try ffmpeg
+            output_str = subprocess.check_output(
+                [
+                    "ffmpeg",
+                    "-v",
+                    "quiet",
+                    "-stats",
+                    "-i",
+                    str(audio_path),
+                    "-f",
+                    "null",
+                    "-",
+                ],
+                stderr=subprocess.STDOUT,
+                universal_newlines=True,
+            )
+
+            # size=N/A time=00:00:02.63 bitrate=N/A speed= 454x -> 00:00:02.63
+            time_str = output_str.strip().split()[1]
+            time_str = time_str.split("=", maxsplit=1)[1]
+
+            # 00:00:02.63 -> 00, 00, 02.63
+            hours_str, mins_str, secs_str = time_str.split(":", maxsplit=2)
+
+            # 00, 00, 02.63 -> 0 + 0 + 2.63
+            seconds = (
+                (60 * 60 * int(hours_str)) + (60 * int(mins_str)) + float(secs_str)
+            )
+
+            return seconds
+        except Exception:
+            _LOGGER.exception("get_audio_duration(%s)", audio_path)
+
+    return 0.0
 
 
 load_items()
@@ -395,6 +458,11 @@ async def api_submit() -> Response:
 
     text_path = audio_path.with_suffix(".txt")
     text_path.write_text(prompt_text)
+
+    if not math.isfinite(duration):
+        # Fix duration
+        _LOGGER.debug("Fixing sync map for %s", audio_path)
+        duration = get_audio_duration(audio_path)
 
     sync_map = {"begin": 0, "end": duration, "raw_text": prompt_text}
     map_path = audio_path.with_suffix(".json")
