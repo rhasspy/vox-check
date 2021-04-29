@@ -333,9 +333,11 @@ async def api_verify() -> Response:
             if skip:
                 # Mark as a skipped item for user
                 user_verified[user_id].add(fragment.id)
+                user_skipped[user_id].add(fragment.id)
             else:
                 # Mark as a verified item for user
                 user_verified[user_id].add(fragment.id)
+                user_skipped[user_id].discard(fragment.id)
     else:
         user_id = request.args["userId"]
         language = request.args.get("language", "en-us")
@@ -356,7 +358,7 @@ async def api_verify() -> Response:
 
     num_items = len(media_by_lang[language])
     num_verified = num_items - len(not_verified)
-    verify_percent = int((num_verified / num_items) * 100)
+    verify_percent = int((num_verified / num_items) * 100) if num_items > 0 else 1
 
     response = await make_response(
         await render_template(
@@ -401,7 +403,7 @@ async def api_record() -> Response:
 
     num_complete = len(all_prompts) - len(incomplete_prompts)
     num_items = len(all_prompts)
-    complete_percent = num_complete / num_items
+    complete_percent = num_complete / num_items if num_items > 0 else 1
     prompt_id = random.sample(incomplete_prompts, 1)[0]
     prompt_text = prompts_by_lang[language][prompt_id]
 
