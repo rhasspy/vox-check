@@ -356,6 +356,17 @@ async def api_verify() -> Response:
         next_id = random.sample(not_verified, 1)[0]
         item = media_by_id[next_id]
 
+        # Look for info from an already verified item
+        async with _DB_CONN.execute(
+            "SELECT media_begin, media_end FROM verify WHERE media_id = ? LIMIT 1",
+            (item.id,),
+        ) as cursor:
+            async for verify_row in cursor:
+                item.fragment.begin, item.fragment.end = (
+                    float(verify_row[0]),
+                    float(verify_row[1]),
+                )
+
     num_items = len(media_by_lang[language])
     num_verified = num_items - len(not_verified)
     verify_percent = int((num_verified / num_items) * 100) if num_items > 0 else 1
