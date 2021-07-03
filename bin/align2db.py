@@ -4,7 +4,7 @@ import sqlite3
 import sys
 from datetime import datetime, timezone
 
-BUFFER_SEC = 0.1
+BUFFER_SEC = 0.05
 
 db_path = sys.argv[1]
 id_format = sys.argv[2]
