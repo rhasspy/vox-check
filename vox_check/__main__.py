@@ -346,6 +346,7 @@ async def api_verify() -> Response:
                 # Mark as a verified item for user
                 user_verified[user_id].add(fragment.id)
                 user_skipped[user_id].discard(fragment.id)
+                all_verified.add(fragment.id)
     else:
         user_id = request.args["userId"]
         language = request.args.get("language", "en-us")
