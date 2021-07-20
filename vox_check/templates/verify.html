@@ -75,6 +75,7 @@
                     <input type="hidden" id="verifyText" name="text" value="{{ fragment.text }}">
                     <input type="hidden" id="verifySkip" name="skip" value="false">
                     <input type="hidden" id="verifySkipped" name="skipped" value="{{ skipped }}">
+                    <input type="hidden" id="verifyShared" name="shared" value="{{ shared }}">
 
                     <div class="controls row">
                         <div class="col-auto">
@@ -86,6 +87,11 @@
                         <div class="col">
                             &nbsp;
                         </div>
+                        {% if not shared %}
+                        <div class="col-auto pull-right">
+                            <a class="btn btn-info btn-lg" href="verify?language={{ language }}&userId={{ user_id }}&shared=true" title="Only show sentences that have no verifications by any user">Share Verifications</a>
+                        </div>
+                        {% endif %}
                         <div class="col-auto pull-right">
                             <button id="skip" type="submit" class="btn btn-lg btn-warning" data-action="skip" onclick="setSkip()">
                                 <i class="fas fa-arrow-right mr-1"></i>
@@ -115,6 +121,10 @@
 
          function setSkip(e) {
              q('#verifySkip').value = 'true';
+         }
+
+         function setShared(e) {
+             q('#verifyShared').value = 'true';
          }
 
          document.addEventListener('DOMContentLoaded', function() {
@@ -189,6 +199,14 @@
         <p class="text-center">
             <a class="btn btn-warning btn-lg" href="verify?language={{ language }}&userId={{ user_id }}&skipped=true">View Skipped</a>
         </p>
+        {% if shared %}
+        <p class="text-center mt-5">
+            You can also double-check the work of other verifiers by looking at all available data &#x1F600;
+            <br>
+            <a class="btn btn-success btn-lg mt-3" href="verify?language={{ language }}&userId={{ user_id }}&shared=false">Verify All Myself</a>
+        </p>
+        {% endif %}
+
         {% endif %}
 
         <!-- FOOTER -->

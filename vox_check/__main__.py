@@ -109,6 +109,9 @@ prompts_by_lang: typing.Dict[str, typing.Dict[str, str]] = defaultdict(dict)
 user_verified: typing.Dict[str, typing.Set[str]] = defaultdict(set)
 user_skipped: typing.Dict[str, typing.Set[str]] = defaultdict(set)
 
+# { media id }
+all_verified: typing.Set[str] = set()
+
 
 def load_items():
     """Load pre-recorded media (audio books, etc.)"""
@@ -251,6 +254,8 @@ async def setup_database():
             else:
                 user_verified[user_id].add(media_id)
 
+            all_verified.add(media_id)
+
     # Update completed prompts
     async with _DB_CONN.execute("SELECT user_id, prompt_id FROM record") as cursor:
         async for record_row in cursor:
@@ -304,6 +309,9 @@ async def api_verify() -> Response:
         language = form["language"]
         skip = form["skip"].strip().lower() == "true"
         include_skipped = form.get("skipped", "false").strip().lower() == "true"
+        shared_verifications = (
+            request.args.get("shared", "true").strip().lower() == "true"
+        )
 
         async with media_lock:
             fragment = Fragment(id=str(form["mediaId"]))
@@ -342,9 +350,18 @@ async def api_verify() -> Response:
         user_id = request.args["userId"]
         language = request.args.get("language", "en-us")
         include_skipped = request.args.get("skipped", "false").strip().lower() == "true"
+        shared_verifications = (
+            request.args.get("shared", "true").strip().lower() == "true"
+        )
 
     # Choose the next item
-    not_verified = media_by_lang[language].keys() - user_verified[user_id]
+    if shared_verifications:
+        # Exclude items verified by anyone
+        not_verified = media_by_lang[language].keys() - all_verified
+    else:
+        # Only exclude items verified by this user
+        not_verified = media_by_lang[language].keys() - user_verified[user_id]
+
     if include_skipped:
         not_verified.update(
             set.intersection(set(media_by_lang[language].keys()), user_skipped[user_id])
@@ -357,6 +374,7 @@ async def api_verify() -> Response:
         item = media_by_id[next_id]
 
         # Look for info from an already verified item
+        assert _DB_CONN
         async with _DB_CONN.execute(
             "SELECT media_begin, media_end FROM verify WHERE media_id = ? LIMIT 1",
             (item.id,),
@@ -381,6 +399,7 @@ async def api_verify() -> Response:
             num_verified=num_verified,
             num_items=num_items,
             skipped=include_skipped,
+            shared=shared_verifications,
         )
     )
 
