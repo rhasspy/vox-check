@@ -148,7 +148,7 @@ def load_items():
                 id=media_id,
                 begin=sync_map["begin"],
                 end=sync_map["end"],
-                text=sync_map["raw_text"],
+                text=sync_map.get("raw_text", sync_map.get("text", "")),
             )
 
             item = MediaItem(
