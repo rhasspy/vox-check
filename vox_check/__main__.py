@@ -30,7 +30,7 @@ from quart import (
     send_from_directory,
 )
 
-from .utils import get_name
+from vox_check.utils import get_name
 
 _LOGGER = logging.getLogger("vox_check")
 _LOOP = asyncio.get_event_loop()
@@ -134,14 +134,14 @@ def load_items():
                 continue
 
             media_id = str(audio_path.relative_to(media_dir))
-            with open(map_path, "r") as map_file:
+            with open(map_path, "r", encoding="utf-8") as map_file:
                 sync_map = json.load(map_file)
 
             if not math.isfinite(sync_map["end"]):
                 # Fix sync map
                 _LOGGER.debug("Fixing sync map for %s", audio_path)
                 sync_map["end"] = get_audio_duration(audio_path)
-                with open(map_path, "w") as map_file:
+                with open(map_path, "w", encoding="utf-8") as map_file:
                     json.dump(sync_map, map_file)
 
             fragment = Fragment(
@@ -160,7 +160,7 @@ def load_items():
         # Load prompts
         prompts_path = lang_dir / "prompts.csv"
         if prompts_path.is_file():
-            with open(prompts_path, "r") as prompts_file:
+            with open(prompts_path, "r", encoding="utf-8") as prompts_file:
                 prompts_reader = csv.reader(prompts_file, delimiter="|")
                 for row in prompts_reader:
                     prompt_id, prompt_text = row[0], row[1]
@@ -499,7 +499,7 @@ async def api_submit() -> Response:
 
     sync_map = {"begin": 0, "end": duration, "raw_text": prompt_text}
     map_path = audio_path.with_suffix(".json")
-    with open(map_path, "w") as map_file:
+    with open(map_path, "w", encoding="utf-8") as map_file:
         json.dump(sync_map, map_file)
 
     # Create new recording
@@ -644,7 +644,7 @@ async def api_download_all() -> Response:
     language = request.args.get("language", "en-us")
 
     user_dir = media_dir / language / user_id
-    assert user_dir.is_dir(), f"Invalid directory"
+    assert user_dir.is_dir(), f"Invalid directory: {user_dir}"
 
     async def generate():
         proc = await asyncio.create_subprocess_exec(
